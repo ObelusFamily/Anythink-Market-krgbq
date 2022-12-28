@@ -4,6 +4,7 @@ var Item = mongoose.model("Item");
 var Comment = mongoose.model("Comment");
 var User = mongoose.model("User");
 var auth = require("../auth");
+var openai_image = require("../aiimageAPI")
 const { sendEvent } = require("../../lib/event");
 
 // Preload item objects on routes with ':item'
@@ -139,21 +140,24 @@ router.get("/feed", auth.required, function(req, res, next) {
 
 router.post("/", auth.required, function(req, res, next) {
   User.findById(req.payload.id)
-    .then(function(user) {
+    .then(async function(user) {
       if (!user) {
         return res.sendStatus(401);
       }
-
       var item = new Item(req.body.item);
 
       item.seller = user;
+      
+      if(!item.image){
+        item.image = await openai_image(item.title)
+      }
 
-      return item.save().then(function() {
+      return item.save()
+      .then(function() {
         sendEvent('item_created', { item: req.body.item })
         return res.json({ item: item.toJSONFor(user) });
       });
-    })
-    .catch(next);
+  }).catch(next);
 });
 
 // return a item
@@ -172,7 +176,7 @@ router.get("/:item", auth.optional, function(req, res, next) {
 
 // update item
 router.put("/:item", auth.required, function(req, res, next) {
-  User.findById(req.payload.id).then(function(user) {
+  User.findById(req.payload.id).then(async function(user) {
     if (req.item.seller._id.toString() === req.payload.id.toString()) {
       if (typeof req.body.item.title !== "undefined") {
         req.item.title = req.body.item.title;
@@ -183,7 +187,12 @@ router.put("/:item", auth.required, function(req, res, next) {
       }
 
       if (typeof req.body.item.image !== "undefined") {
-        req.item.image = req.body.item.image;
+        if(req.body.item.image !== ""){
+          req.item.image = req.body.item.image;
+        }
+        else{
+          req.item.image = await openai_image(req.item.title)
+        }
       }
 
       if (typeof req.body.item.tagList !== "undefined") {
